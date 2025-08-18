@@ -1,5 +1,11 @@
 # Projeto: Pipeline Cloud para Análise de Cotações da B3 com Azure
 
+## Equipe
+|Matrícula | Aluno |
+| -- | -- |
+| 202401000991  |  Fellipe Martins Valladares|
+| 202401000981  |  João Pedro Martins Abdu |
+
 ## Objetivo do Projeto
 
 Este projeto educacional tem como finalidade construir uma arquitetura de dados completa na nuvem Microsoft Azure para processar arquivos de cotações diárias da B3 (Bolsa de Valores do Brasil). O foco é aplicar conceitos de Big Data e engenharia de dados em um cenário prático, desenvolvendo habilidades em arquitetura cloud, automação de pipelines e integração de serviços.
