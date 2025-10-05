@@ -24,7 +24,7 @@ def try_http_download(url):
         pass
 
 def run():
-    dt = yymmdd(datetime.now())
+    dt = "250923" #yymmdd(datetime.now())
     url_to_download = build_url_download(dt)
 
     # 1) Download do Zip
@@ -67,7 +67,7 @@ def run():
     shutil.rmtree(f"{PATH_TO_SAVE}", ignore_errors=True)
 
     print(f"[OK] Arquivos extraidos do zip com sucesso")
-    
+   
 
 if __name__ == "__main__":
     run()
