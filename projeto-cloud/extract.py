@@ -5,6 +5,7 @@ import os
 import zipfile
 from azure_storage import save_file_to_blob
 import shutil
+from process_stocks import StockProcessor
 
 PATH_TO_SAVE = "./dados_b3"
 
@@ -24,50 +25,63 @@ def try_http_download(url):
         pass
 
 def run():
-    dt = "250923" #yymmdd(datetime.now())
-    url_to_download = build_url_download(dt)
+    dt_str = "250923" #yymmdd(datetime.now())
+    # Converte a string da data para um objeto datetime
+    dt_obj = datetime.strptime(dt_str, "%y%m%d").date()
+
+    url_to_download = build_url_download(dt_str)
 
     # 1) Download do Zip
     zip_bytes, zip_name = try_http_download(url_to_download)
 
     if not zip_bytes:
         raise RuntimeError("Não foi possivel baixar o arquivo de cotações")
-    
+
     print(f"[OK] Baixado arquivo de cotaçoes: {zip_name}")
 
-    # 2) Salvar o Zip
-    
-    #Cria o diretorio que ira salvar o arquivo zip do download
-    os.makedirs(PATH_TO_SAVE, exist_ok=True)
-    zip_path = f"{PATH_TO_SAVE}/pregao_{dt}.zip"
-    with open(zip_path, "wb") as f:
-        f.write(zip_bytes)
+    try:
+        # 2) Salvar o Zip
+        os.makedirs(PATH_TO_SAVE, exist_ok=True)
+        zip_path = f"{PATH_TO_SAVE}/pregao_{dt_str}.zip"
+        with open(zip_path, "wb") as f:
+            f.write(zip_bytes)
 
-    print(f"[OK] Zip salvo em {zip_path}")
+        print(f"[OK] Zip salvo em {zip_path}")
 
-    # 3) Extrair os arquivos do zip
+        # 3) Extrair os arquivos do zip
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(f"{PATH_TO_SAVE}/pregao_{dt_str}")
 
-    #Extrair a primeira pasta
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(f"{PATH_TO_SAVE}/pregao_{dt}")
-        
+        with zipfile.ZipFile(f"{PATH_TO_SAVE}/pregao_{dt_str}/SPRE{dt_str}.zip", "r") as zf:
+            zf.extractall(f"{PATH_TO_SAVE}/SPRE{dt_str}")
 
-    #Extrair a segunda parte
-    with zipfile.ZipFile(f"{PATH_TO_SAVE}/pregao_{dt}/SPRE{dt}.zip", "r") as zf:
-        zf.extractall(f"{PATH_TO_SAVE}/SPRE{dt}")
+        # Processar arquivos
+        arquivos = [f for f in os.listdir(f"{PATH_TO_SAVE}/SPRE{dt_str}")]
+        processor = StockProcessor()
 
+        for arquivo in arquivos:
+            file_path = f"{PATH_TO_SAVE}/SPRE{dt_str}/{arquivo}"
 
-    #Subir arquivo para o Blob Storage
-    arquivos = [f for f in os.listdir(f"{PATH_TO_SAVE}/SPRE{dt}")]
-    
-    for arquivo in arquivos:
-        save_file_to_blob(f"BVBG186_{dt}.xml", f"{PATH_TO_SAVE}/SPRE{dt}/{arquivo}")
+            # Tenta salvar no Blob Storage, mas continua mesmo se falhar
+            try:
+                save_file_to_blob(f"BVBG186_{dt_str}.xml", file_path)
+                print(f"[OK] Arquivo salvo no Blob Storage: BVBG186_{dt_str}.xml")
+            except Exception as e:
+                print(f"[WARN] Não foi possível salvar no Blob Storage: {str(e)}")
 
-    #Apagar arquivos desnecessários
-    shutil.rmtree(f"{PATH_TO_SAVE}", ignore_errors=True)
+            # Processa o arquivo XML e salva no PostgreSQL, passando a data como fallback
+            processor.process_xml_file(file_path, fallback_date=dt_obj)
 
-    print(f"[OK] Arquivos extraidos do zip com sucesso")
-   
+    finally:
+        # Sempre tenta limpar os arquivos temporários
+        try:
+            shutil.rmtree(f"{PATH_TO_SAVE}", ignore_errors=True)
+            print("[OK] Arquivos temporários removidos")
+        except Exception as e:
+            print(f"[WARN] Erro ao limpar arquivos temporários: {str(e)}")
+
+    print(f"[OK] Processamento finalizado")
+
 
 if __name__ == "__main__":
     run()
