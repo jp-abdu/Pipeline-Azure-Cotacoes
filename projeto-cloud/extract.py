@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from helpers import yymmdd
 import requests
 import os
@@ -6,6 +6,9 @@ import zipfile
 from azure_storage import save_file_to_blob
 import shutil
 from process_stocks import StockProcessor
+from dotenv import load_dotenv # ADICIONE ESTA IMPORTAÇÃO
+
+load_dotenv() # ADICIONE ESTA LINHA AQUI, LOGO APÓS AS IMPORTAÇÕES
 
 PATH_TO_SAVE = "./dados_b3"
 
@@ -22,33 +25,50 @@ def try_http_download(url):
                 return resp.content, os.path.basename(url)
     except requests.RequestException:
         print(f"[ERROR] Falha ao acessar a {url}")
-        pass
+    # Retorna None se qualquer condição falhar
+    return None
 
 def run():
-    dt_str = "250923" #yymmdd(datetime.now())
-    # Converte a string da data para um objeto datetime
-    dt_obj = datetime.strptime(dt_str, "%y%m%d").date()
-
+    # 1) Tenta baixar o arquivo de hoje
+    today = datetime.now()
+    dt_str = yymmdd(today)
     url_to_download = build_url_download(dt_str)
+    download_result = try_http_download(url_to_download)
 
-    # 1) Download do Zip
-    zip_bytes, zip_name = try_http_download(url_to_download)
+    # 2) Failsafe: se falhar, busca o último dia útil disponível
+    if not download_result:
+        print(f"[WARN] Não foi possível baixar o arquivo para a data de hoje ({dt_str}). Buscando o último dia útil...")
+        # Loop para voltar nos últimos 7 dias
+        for i in range(1, 8):
+            previous_date = today - timedelta(days=i)
+            # Verifica se é um dia de semana (Segunda=0, Sexta=4)
+            if previous_date.weekday() < 5:
+                dt_str = yymmdd(previous_date)
+                url_to_download = build_url_download(dt_str)
+                download_result = try_http_download(url_to_download)
+                # Se o download for bem-sucedido, para a busca
+                if download_result:
+                    break
 
-    if not zip_bytes:
-        raise RuntimeError("Não foi possivel baixar o arquivo de cotações")
+    # Se não encontrou nenhum arquivo nos últimos 7 dias, encerra o programa
+    if not download_result:
+        raise RuntimeError("Não foi possível baixar o arquivo de cotações nos últimos 7 dias.")
 
-    print(f"[OK] Baixado arquivo de cotaçoes: {zip_name}")
+    # Extrai os dados do download bem-sucedido
+    zip_bytes, zip_name = download_result
+    # Converte a string da data (que pode ser de hoje ou de um dia anterior) para um objeto datetime
+    dt_obj = datetime.strptime(dt_str, "%y%m%d").date()
+    print(f"[OK] Baixado arquivo de cotações para a data {dt_obj}: {zip_name}")
 
     try:
-        # 2) Salvar o Zip
+        # Salvar o Zip
         os.makedirs(PATH_TO_SAVE, exist_ok=True)
         zip_path = f"{PATH_TO_SAVE}/pregao_{dt_str}.zip"
         with open(zip_path, "wb") as f:
             f.write(zip_bytes)
-
         print(f"[OK] Zip salvo em {zip_path}")
 
-        # 3) Extrair os arquivos do zip
+        # Extrair os arquivos do zip
         with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(f"{PATH_TO_SAVE}/pregao_{dt_str}")
 
@@ -62,18 +82,15 @@ def run():
         for arquivo in arquivos:
             file_path = f"{PATH_TO_SAVE}/SPRE{dt_str}/{arquivo}"
 
-            # Tenta salvar no Blob Storage, mas continua mesmo se falhar
             try:
                 save_file_to_blob(f"BVBG186_{dt_str}.xml", file_path)
                 print(f"[OK] Arquivo salvo no Blob Storage: BVBG186_{dt_str}.xml")
             except Exception as e:
                 print(f"[WARN] Não foi possível salvar no Blob Storage: {str(e)}")
 
-            # Processa o arquivo XML e salva no PostgreSQL, passando a data como fallback
             processor.process_xml_file(file_path, fallback_date=dt_obj)
 
     finally:
-        # Sempre tenta limpar os arquivos temporários
         try:
             shutil.rmtree(f"{PATH_TO_SAVE}", ignore_errors=True)
             print("[OK] Arquivos temporários removidos")
