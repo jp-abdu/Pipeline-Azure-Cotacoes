@@ -1,45 +1,117 @@
-import psycopg2
 import os
+import urllib3
+from azure.cosmos import CosmosClient, PartitionKey, exceptions
+from datetime import datetime
+from dotenv import load_dotenv
 
-class PostgresHandler:
+# Suprimir warnings SSL para desenvolvimento local
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+load_dotenv()
+
+class CosmosHandler:
     def __init__(self):
-        self.conn_string = os.getenv("POSTGRES_CONN_STRING")
-        self.conn = None
-        self.connect()
+        # Configurações do CosmosDB Emulator
+        self.endpoint = os.getenv("COSMOS_ENDPOINT")
+        self.key = os.getenv("COSMOS_KEY")
+        self.database_name = os.getenv("COSMOS_DATABASE_NAME")
+        self.container_name = os.getenv("COSMOS_CONTAINER_NAME")
+        
+        # Cliente CosmosDB
+        self.client = CosmosClient(self.endpoint, self.key)
+        self.database = None
+        self.container = None
+        
+        self.setup_database()
 
-    def connect(self):
+    def setup_database(self):
+        """Configura o banco de dados e container"""
         try:
-            self.conn = psycopg2.connect(self.conn_string)
-        except psycopg2.OperationalError as e:
-            print(f"[FATAL] Erro ao conectar ao PostgreSQL: {e}")
+            # Criar ou obter database
+            try:
+                self.database = self.client.create_database(
+                    id=self.database_name,
+                    offer_throughput=400
+                )
+                print(f"[INFO] Database '{self.database_name}' criado.")
+            except exceptions.CosmosResourceExistsError:
+                self.database = self.client.get_database_client(self.database_name)
+                print(f"[INFO] Database '{self.database_name}' já existe.")
+
+            # Criar ou obter container
+            try:
+                self.container = self.database.create_container(
+                    id=self.container_name,
+                    partition_key=PartitionKey(path="/symbol"),
+                    offer_throughput=400
+                )
+                print(f"[INFO] Container '{self.container_name}' criado.")
+            except exceptions.CosmosResourceExistsError:
+                self.container = self.database.get_container_client(self.container_name)
+                print(f"[INFO] Container '{self.container_name}' já existe.")
+
+        except Exception as e:
+            print(f"[FATAL] Erro ao configurar CosmosDB: {e}")
             raise
 
     def save_stock_data(self, stock_data):
-        sql = """
-            INSERT INTO stock_prices (
-                symbol, date, opening_price, minimum_price, maximum_price,
-                average_price, last_price, volume, trades_quantity
-            ) VALUES (
-                %(symbol)s, %(date)s, %(opening_price)s, %(minimum_price)s, %(maximum_price)s,
-                %(average_price)s, %(last_price)s, %(volume)s, %(trades_quantity)s
-            )
-            ON CONFLICT (symbol, date) DO UPDATE SET
-                opening_price = EXCLUDED.opening_price,
-                minimum_price = EXCLUDED.minimum_price,
-                maximum_price = EXCLUDED.maximum_price,
-                average_price = EXCLUDED.average_price,
-                last_price = EXCLUDED.last_price,
-                volume = EXCLUDED.volume,
-                trades_quantity = EXCLUDED.trades_quantity;
-        """
+        """Salva dados de ação no CosmosDB"""
         try:
-            with self.conn.cursor() as cur:
-                cur.execute(sql, stock_data)
-            self.conn.commit()
-        except (Exception, psycopg2.Error) as e:
-            print(f"[ERROR] Erro na transação com o banco de dados para o papel {stock_data.get('symbol')}: {e}")
-            self.conn.rollback()
+            # Converter date para string ISO format
+            if isinstance(stock_data['date'], datetime):
+                date_str = stock_data['date'].isoformat()
+            else:
+                date_str = stock_data['date'].isoformat() if hasattr(stock_data['date'], 'isoformat') else str(stock_data['date'])
+            
+            # Criar documento para CosmosDB
+            document = {
+                'id': f"{stock_data['symbol']}_{date_str}",  # ID único
+                'symbol': stock_data['symbol'],
+                'date': date_str,
+                'opening_price': stock_data['opening_price'],
+                'minimum_price': stock_data['minimum_price'],
+                'maximum_price': stock_data['maximum_price'],
+                'average_price': stock_data['average_price'],
+                'last_price': stock_data['last_price'],
+                'volume': stock_data['volume'],
+                'trades_quantity': stock_data['trades_quantity'],
+                'created_at': datetime.utcnow().isoformat()
+            }
 
-    def __del__(self):
-        if self.conn:
-            self.conn.close()
+            # Upsert (inserir ou atualizar) o documento
+            self.container.upsert_item(body=document)
+            
+        except Exception as e:
+            print(f"[ERROR] Erro ao salvar dados no CosmosDB para o papel {stock_data.get('symbol')}: {e}")
+            raise
+
+    def get_stock_data(self, symbol=None, date=None):
+        """Recupera dados de ações do CosmosDB"""
+        try:
+            query = "SELECT * FROM c"
+            parameters = []
+            
+            if symbol and date:
+                query += " WHERE c.symbol = @symbol AND c.date = @date"
+                parameters = [
+                    {"name": "@symbol", "value": symbol},
+                    {"name": "@date", "value": date.isoformat() if hasattr(date, 'isoformat') else str(date)}
+                ]
+            elif symbol:
+                query += " WHERE c.symbol = @symbol"
+                parameters = [{"name": "@symbol", "value": symbol}]
+            elif date:
+                query += " WHERE c.date = @date"
+                parameters = [{"name": "@date", "value": date.isoformat() if hasattr(date, 'isoformat') else str(date)}]
+            
+            items = list(self.container.query_items(
+                query=query,
+                parameters=parameters,
+                enable_cross_partition_query=True
+            ))
+            
+            return items
+            
+        except Exception as e:
+            print(f"[ERROR] Erro ao buscar dados no CosmosDB: {e}")
+            return []

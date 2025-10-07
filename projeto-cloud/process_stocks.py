@@ -1,11 +1,11 @@
 from lxml import etree
 from datetime import datetime
-from db_handler import PostgresHandler
+from db_handler import CosmosHandler
 import io
 
 class StockProcessor:
     def __init__(self):
-        self.db = PostgresHandler()
+        self.db = CosmosHandler()
 
     def process_xml_file(self, xml_content_string, fallback_date=None):
         print(f"[INFO] Iniciando processamento (namespace-agnóstico) a partir do conteúdo do blob...")
