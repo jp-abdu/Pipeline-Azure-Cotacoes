@@ -1,21 +1,22 @@
 from lxml import etree
 from datetime import datetime
 from db_handler import PostgresHandler
+import io
 
 class StockProcessor:
     def __init__(self):
         self.db = PostgresHandler()
 
-    def process_xml_file(self, xml_path, fallback_date=None):
-        print(f"[INFO] Iniciando processamento final (namespace-agnóstico): {xml_path}")
+    def process_xml_file(self, xml_content_string, fallback_date=None):
+        print(f"[INFO] Iniciando processamento (namespace-agnóstico) a partir do conteúdo do blob...")
 
         try:
-            tree = etree.parse(xml_path)
+            xml_bytes = xml_content_string.encode('utf-8')
+
+            tree = etree.parse(io.BytesIO(xml_bytes))
             root = tree.getroot()
 
-            # --- LÓGICA DE DATA (NAMESPACE-AGNÓSTICO) ---
             trade_date = None
-            # Busca a tag 'CreDt' ignorando o namespace
             trade_date_node = root.xpath('.//*[local-name()="CreDt"]')
             if trade_date_node:
                 trade_date = datetime.strptime(trade_date_node[0].text.split('T')[0], '%Y-%m-%d').date()
@@ -26,8 +27,6 @@ class StockProcessor:
                 print("[FATAL] Não foi possível determinar a data do pregão.")
                 return
 
-            # --- LÓGICA DE BUSCA (NAMESPACE-AGNÓSTICO) ---
-            # Busca todos os elementos <PricRpt> ignorando o namespace
             papers = root.xpath('.//*[local-name()="PricRpt"]')
             print(f"[INFO] Encontrados {len(papers)} relatórios de preço (<PricRpt>) no arquivo.")
 
@@ -79,7 +78,6 @@ class StockProcessor:
         return symbol.endswith(('3', '4', '11'))
 
     def _get_price(self, element, tag):
-        # Busca a tag filha ignorando o namespace
         node = element.xpath(f'*[local-name()="{tag}"]')
         if node and node[0].text:
             return float(node[0].text)

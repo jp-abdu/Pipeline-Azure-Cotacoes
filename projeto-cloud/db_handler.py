@@ -15,7 +15,6 @@ class PostgresHandler:
             raise
 
     def save_stock_data(self, stock_data):
-        # SQL com a cláusula ON CONFLICT (UPSERT)
         sql = """
             INSERT INTO stock_prices (
                 symbol, date, opening_price, minimum_price, maximum_price,
@@ -39,7 +38,6 @@ class PostgresHandler:
             self.conn.commit()
         except (Exception, psycopg2.Error) as e:
             print(f"[ERROR] Erro na transação com o banco de dados para o papel {stock_data.get('symbol')}: {e}")
-            # Desfaz a transação falha para permitir que a próxima continue
             self.conn.rollback()
 
     def __del__(self):

@@ -3,3 +3,4 @@ azure-storage-blob==12.3.2
 lxml
 azure-cosmos
 install psycopg2-binary
+tempfile
