@@ -6,7 +6,7 @@ import zipfile
 import io
 import tempfile
 from azure_storage import save_file_to_blob, get_file_from_blob
-from process_stocks import StockProcessor
+from transform_load import StockProcessor
 from dotenv import load_dotenv
 
 load_dotenv()
