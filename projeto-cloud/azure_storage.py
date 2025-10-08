@@ -17,7 +17,6 @@ def save_file_to_blob(file_name, local_path_file):
             service = BlobServiceClient.from_connection_string(AZURE_BLOB_CONNECTION)
             container = service.get_container_client(CONTAINER)
             
-            # Ensure container exists
             try:
                 service.create_container(CONTAINER, public_access=PublicAccess.Container)
                 print(f"[INFO] Container '{CONTAINER}' criado.")
@@ -27,21 +26,19 @@ def save_file_to_blob(file_name, local_path_file):
                 else:
                     print(f"[WARN] Erro ao criar container: {e}")
 
-            # Check file size and properties
             file_size = os.path.getsize(local_path_file)
             print(f"[INFO] Tamanho do arquivo: {file_size} bytes")
 
             with open(local_path_file, "rb") as data:
                 print(f"[INFO] Fazendo upload de '{file_name}' para o container '{CONTAINER}'...")
                 
-                # Upload with basic parameters only for compatibility
                 container.upload_blob(
                     name=file_name, 
                     data=data, 
                     overwrite=True
                 )
                 print(f"[SUCCESS] Upload de '{file_name}' concluído.")
-                return  # Success, exit function
+                return  
                 
         except Exception as e:
             print(f"[ERROR] Tentativa {attempt + 1} falhou: {type(e).__name__}: {e}")
@@ -50,7 +47,7 @@ def save_file_to_blob(file_name, local_path_file):
             if attempt < max_retries - 1:
                 print(f"[INFO] Aguardando {retry_delay} segundos antes da próxima tentativa...")
                 time.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay *= 2  
             else:
                 print(f"[ERROR] Todas as {max_retries} tentativas falharam. Desistindo.")
                 raise
