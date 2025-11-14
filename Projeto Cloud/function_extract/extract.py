@@ -34,7 +34,7 @@ def try_http_download(url):
         pass
 
 def run():
-    dt = "251107" #yymmdd(datetime.now())
+    dt = yymmdd(datetime.now())  # Usa data atual no formato YYMMDD
     url_to_download = build_url_download(dt)
 
     # 1) Download do Zip

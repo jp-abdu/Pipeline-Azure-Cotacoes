@@ -1,0 +1,29 @@
+# Arquivos com credenciais - NUNCA COMMITAR!
+local.settings.json
+.env
+*.env.local
+
+# Dependências
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Build
+target/
+build/
+dist/
+*.class
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

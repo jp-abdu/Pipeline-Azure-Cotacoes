@@ -3,3 +3,6 @@
 # azure-monitor-opentelemetry
 
 azure-functions
+azure-storage-blob
+mysql-connector-python
+lxml
