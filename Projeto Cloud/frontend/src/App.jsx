@@ -11,7 +11,9 @@ export default function App() {
 
   const load = async () => {
     const res = await fetchAssets(filters);
-    setData(res.content || []);
+    // Ordena os dados pela data do pregão antes de atualizar o estado
+    const sortedData = (res.content || []).sort((a, b) => new Date(a.dataPregao) - new Date(b.dataPregao));
+    setData(sortedData);
   };
 
   useEffect(() => { load(); }, []);
