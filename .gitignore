@@ -17,7 +17,7 @@ dist/
 *.class
 
 # IDEs
-.vscode/
+
 .idea/
 *.iml
 
