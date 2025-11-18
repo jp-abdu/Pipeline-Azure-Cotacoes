@@ -1,6 +1,7 @@
 import azure.functions as func
 import logging
 import os
+import re
 from lxml import etree
 from datetime import datetime
 from decimal import Decimal
@@ -100,7 +101,9 @@ def extract_asset_data_b3(pric_rpt_element):
     """
     Extrai os dados de um ativo individual do elemento PricRpt.
     Layout BVMF.217.01 da B3.
-    Filtra apenas ativos que terminam com 3, 4, 5, 6 ou 11.
+    Filtra apenas ativos que atendem aos seguintes padrões:
+    - 4 letras + 1 número (terminando em 3, 4, 5 ou 6)
+    - 4 letras + 2 números (terminando em 11 ou 34)
     """
     try:
         # Namespace do XML da B3
@@ -112,10 +115,11 @@ def extract_asset_data_b3(pric_rpt_element):
             return None
         ticker = ticker_elem.text.strip()
 
-        # Filtrar apenas tickers que terminam com 3, 4, 5, 6 ou 11
-        if not (ticker.endswith('3') or ticker.endswith('4') or
-                ticker.endswith('5') or ticker.endswith('6') or
-                ticker.endswith('11')):
+        # Filtrar usando regex:
+        # - ^[A-Z]{4}[3-6]$ : 4 letras maiúsculas seguidas de um número (3, 4, 5 ou 6)
+        # - ^[A-Z]{4}(11|34)$ : 4 letras maiúsculas seguidas de 11 ou 34
+        pattern = r'^[A-Z]{4}([3-6]|11|34)$'
+        if not re.match(pattern, ticker):
             return None
 
         # Data do pregão
