@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from helpers import yymmdd
 import requests
 import os
@@ -34,19 +34,33 @@ def try_http_download(url):
         pass
 
 def run():
-    dt = yymmdd(datetime.now())  # Usa data atual no formato YYMMDD
-    url_to_download = build_url_download(dt)
+    # Tenta baixar o arquivo dos últimos 7 dias (para cobrir finais de semana e feriados)
+    max_attempts = 7
+    zip_bytes = None
+    zip_name = None
+    dt = None
 
-    # 1) Download do Zip
-    zip_bytes, zip_name = try_http_download(url_to_download)
+    for days_back in range(max_attempts):
+        target_date = datetime.now() - timedelta(days=days_back)
+        dt = yymmdd(target_date)
+        url_to_download = build_url_download(dt)
+
+        # 1) Tentativa de Download do Zip
+        result = try_http_download(url_to_download)
+
+        if result:
+            zip_bytes, zip_name = result
+            logging.info(f"[OK] Arquivo encontrado para {target_date.strftime('%d/%m/%Y')}")
+            logging.info(f"[OK] Baixado arquivo de cotações: {zip_name}")
+            break
+        else:
+            logging.info(f"[INFO] Arquivo não encontrado para {target_date.strftime('%d/%m/%Y')}, tentando dia anterior...")
 
     if not zip_bytes:
-        raise RuntimeError("Não foi possivel baixar o arquivo de cotações")
-    
-    logging.info(f"[OK] Baixado arquivo de cotaçoes: {zip_name}")
+        raise RuntimeError(f"Não foi possível baixar o arquivo de cotações dos últimos {max_attempts} dias")
 
     # 2) Salvar o Zip
-    
+
     #Cria o diretorio que ira salvar o arquivo zip do download
     os.makedirs(PATH_TO_SAVE, exist_ok=True)
     zip_path = f"{PATH_TO_SAVE}/pregao_{dt}.zip"
@@ -60,7 +74,7 @@ def run():
     #Extrair a primeira pasta
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(f"{PATH_TO_SAVE}/pregao_{dt}")
-        
+
 
     #Extrair a segunda parte
     with zipfile.ZipFile(f"{PATH_TO_SAVE}/pregao_{dt}/SPRE{dt}.zip", "r") as zf:
@@ -69,7 +83,7 @@ def run():
 
     #Subir arquivo para o Blob Storage
     arquivos = [f for f in os.listdir(f"{PATH_TO_SAVE}/pregao_{dt}/SPRE{dt}")]
-    
+
     for arquivo in arquivos:
         save_file_to_blob(f"BVBG186_{dt}.xml", f"{PATH_TO_SAVE}/pregao_{dt}/SPRE{dt}/{arquivo}")
 
@@ -77,7 +91,7 @@ def run():
     shutil.rmtree(f"{PATH_TO_SAVE}/pregao_{dt}", ignore_errors=True)
 
     logging.info(f"[OK] Arquivos extraidos do zip com sucesso")
-   
+
 
 if __name__ == "__main__":
     run()
